@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Smart Prescription & Medicine Reminder</title>
+</head>
+<body style="font-family: Arial, sans-serif; margin: 0; background: #f7f8fc;">
+
+<!-- HEADER -->
+<div style="background:#0066ff; padding:15px; color:white; text-align:center;">
+  <h2 style="margin:0;">💊 Smart Medicine Reminder</h2>
+</div>
+
+<!-- MAIN CONTAINER -->
+<div style="max-width:900px; margin:20px auto; padding:10px;">
+
+  <!-- Add Form -->
+  <div style="background:white; padding:15px; border-radius:8px; box-shadow:0 0 4px rgba(0,0,0,0.1); margin-bottom:20px;">
+    <h3 style="margin-top:0;">Add Prescription</h3>
+
+    <label style="font-weight:bold;">Patient Name</label>
+    <input id="patientName" type="text" placeholder="Patient name"
+      style="width:100%; padding:10px; margin:6px 0 12px; border-radius:6px; border:1px solid #ccc;">
+
+    <label style="font-weight:bold;">Medicine Name</label>
+    <input id="medName" type="text" placeholder="E.g., Paracetamol"
+      style="width:100%; padding:10px; margin:6px 0 12px; border-radius:6px; border:1px solid #ccc;">
+
+    <label style="font-weight:bold;">Dose</label>
+    <input id="medDose" type="text" placeholder="E.g., 10mg"
+      style="width:100%; padding:10px; margin:6px 0 12px; border-radius:6px; border:1px solid #ccc;">
+
+    <label style="font-weight:bold;">Times (Comma Separated HH:MM)</label>
+    <input id="times" type="text" placeholder="08:00,14:00,20:00"
+      style="width:100%; padding:10px; margin:6px 0 12px; border-radius:6px; border:1px solid #ccc;">
+
+    <label style="font-weight:bold;">Start Date</label>
+    <input id="startDate" type="date"
+      style="width:100%; padding:10px; margin:6px 0 12px; border-radius:6px; border:1px solid #ccc;">
+
+    <label style="font-weight:bold;">End Date</label>
+    <input id="endDate" type="date"
+      style="width:100%; padding:10px; margin:6px 0 12px; border-radius:6px; border:1px solid #ccc;">
+
+    <button id="addBtn"
+      style="width:100%; padding:12px; margin-top:10px; background:#007bff; color:white; border:none; border-radius:6px; font-size:16px; cursor:pointer;">
+      ➕ Add Prescription
+    </button>
+  </div>
+
+  <!-- List Section -->
+  <h3>📌 Prescriptions</h3>
+  <div id="list"></div>
+
+</div>
+
+<script>
+const API = "/api";
+
+// Fetch & Display
+async function fetchPrescriptions() {
+  const res = await fetch(API + "/prescriptions");
+  const data = await res.json();
+
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  if (data.length === 0) {
+    list.innerHTML = "<p style='text-align:center;'>No prescriptions yet.</p>";
+    return;
+  }
+
+  data.forEach(pres => {
+    const card = document.createElement("div");
+    card.style = "background:white; padding:12px; border-radius:8px; box-shadow:0 0 4px rgba(0,0,0,0.1); margin-bottom:10px; display:flex; justify-content:space-between; align-items:flex-start;";
+
+    card.innerHTML = `
+      <div>
+        <strong>${pres.patientName}</strong><br>
+        <small>${new Date(pres.startDate).toLocaleDateString()} → ${new Date(pres.endDate).toLocaleDateString()}</small><br><br>
+        ${pres.medicines.map(m => `
+          <div>${m.name} (${m.dose}) — ${m.times.join(", ")}</div>
+        `).join("")}
+      </div>
+      <button style="background:#ff4d4d; color:white; border:none; padding:8px 10px; border-radius:6px; cursor:pointer;"
+        data-id="${pres._id}">
+        ❌
+      </button>
+    `;
+
+    list.appendChild(card);
+  });
+
+  document.querySelectorAll("button[data-id]").forEach(btn => {
+    btn.onclick = async () => {
+      await fetch(API + "/prescriptions/" + btn.dataset.id, { method: "DELETE" });
+      fetchPrescriptions();
+    };
+  });
+}
+
+// Add Prescription
+document.getElementById("addBtn").onclick = async () => {
+  const patientName = document.getElementById("patientName").value.trim();
+  const medName = document.getElementById("medName").value.trim();
+  const medDose = document.getElementById("medDose").value.trim();
+  const times = document.getElementById("times").value.split(",").map(t => t.trim());
+  const startDate = document.getElementById("startDate").value;
+  const endDate = document.getElementById("endDate").value;
+
+  if (!patientName || !medName || !medDose || !times.length || !startDate || !endDate) {
+    alert("⚠ Please fill every field!");
+    return;
+  }
+
+  await fetch(API + "/prescriptions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      patientName,
+      startDate, endDate,
+      medicines: [{ name: medName, dose: medDose, times }]
+    })
+  });
+
+  fetchPrescriptions();
+};
+
+// Browser Reminder Check (every 20s)
+setInterval(async () => {
+  if (Notification.permission !== "granted") {
+    Notification.requestPermission();
+  }
+
+  const res = await fetch(API + "/prescriptions");
+  const data = await res.json();
+  const now = new Date();
+  const hhmm = now.toTimeString().slice(0,5);
+
+  data.forEach(p => {
+    if (new Date(p.startDate) <= now && new Date(p.endDate) >= now) {
+      p.medicines.forEach(m => {
+        if (m.times.includes(hhmm)) {
+          new Notification("💊 Medicine Reminder", {
+            body: `${p.patientName} — Take ${m.name} (${m.dose})`
+          });
+        }
+      });
+    }
+  });
+}, 20000);
+
+fetchPrescriptions();
+</script>
+
+</body>
+</html>
